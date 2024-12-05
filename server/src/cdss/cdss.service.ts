@@ -72,6 +72,9 @@ export class CdssService {
       case 'lung_ct':
         url += '/inference/chest-ct-cancer-classification';
         break;
+      case 'mammography':
+        url += '/inference/mammography-cancer-classification';
+        break;
       default:
         throw new UnprocessableEntityException('Invalid prediction model');
     }

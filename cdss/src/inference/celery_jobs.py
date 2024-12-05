@@ -10,6 +10,9 @@ from src.inference.brain_tumors_classification.service import (
 from src.inference.chest_ct_cancer_classification.service import (
     ChestCTCancerClassificationService,
 )
+from src.inference.mammography_cancer_classification.service import (
+    MammographyInferenceService
+)
 
 from src.config import Config
 
@@ -24,6 +27,7 @@ celery_app = Celery(
 dicom_service = DicomService()
 brain_tumor_service = None
 ct_scan_service = None
+mammography_service = None
 
 
 async def update_prediction_result(
@@ -145,6 +149,50 @@ def predict_chest_ctscan_task(prediction_id: str, instance_url: str):
         )
 
         return prediction
+    except Exception as e:
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(fail_prediction(prediction_id))
+        raise e
+
+@celery_app.task
+def predict_mammography_task(prediction_id: str, instance_url: str):
+    """
+    Celery task for predicting mammography cancer type.
+
+    Args:
+        prediction_id (str): The unique ID for the prediction task.
+        instance_url (str): The DICOM file instance URL.
+
+    Returns:
+        dict: Prediction result with class and probability.
+    """
+    try:
+        # Get the asyncio event loop
+        loop = asyncio.get_event_loop()
+
+        # Convert the DICOM file to an image (returns image bytes)
+        image_bytes = loop.run_until_complete(
+            dicom_service.convert_dicom_to_image(instance_url)
+        )
+
+        # Load the global mammography inference service if not already loaded
+        global mammography_service
+        if mammography_service is None:
+            mammography_service = MammographyInferenceService(
+                "./src/inference/mammography_cancer_classification/weights/mammography_cancer_classification.pt"      
+            )
+
+        prediction = mammography_service.predict(image_bytes.getvalue())
+
+        loop.run_until_complete(
+            update_prediction_result(
+                prediction_id, prediction["class"], prediction["probability"]
+            )
+        )
+
+     
+        return prediction
+
     except Exception as e:
         loop = asyncio.get_event_loop()
         loop.run_until_complete(fail_prediction(prediction_id))
